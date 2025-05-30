@@ -18,11 +18,11 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "https://dockingdynamic.netlify.app",
-        "https://dynamicdock.onrender.com",
-        "https://683a098f51d080dd6dd68b5b--dockingdynamic.netlify.app"
+        "https://*.dockingdynamic.netlify.app",
+        "https://dynamicdock.onrender.com"
     ],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
     max_age=3600

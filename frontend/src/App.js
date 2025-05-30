@@ -62,45 +62,55 @@ function App() {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await axios.post(`${config.apiUrl}/api/upload-pdb`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-        timeout: 30000, // 30 second timeout
-        maxContentLength: MAX_FILE_SIZE,
-        retry: 3,
-        retryDelay: 1000,
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          console.log(`Upload Progress: ${percentCompleted}%`);
+      try {
+        console.log('Attempting to upload to:', `${config.apiUrl}/api/upload-pdb`);
+        const response = await axios.post(`${config.apiUrl}/api/upload-pdb`, formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 30000, // 30 second timeout
+          maxContentLength: MAX_FILE_SIZE,
+          retry: 3,
+          retryDelay: 1000,
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+            console.log(`Upload Progress: ${percentCompleted}%`);
+          }
+        });
+
+        console.log('Server response:', response);
+
+        if (!response.data || typeof response.data !== 'object') {
+          throw new Error('Invalid server response');
         }
-      });
 
-      if (!response.data || typeof response.data !== 'object') {
-        throw new Error('Invalid server response');
+        setProteinData(response.data);
+        setUploadedFile(file);
+      } catch (err) {
+        console.error('Upload error:', err);
+        let errorMessage;
+        
+        if (err.code === 'ECONNABORTED') {
+          errorMessage = 'Connection timeout. Please try again.';
+        } else if (err.message === 'Network Error') {
+          errorMessage = 'Network error. Please check your connection and make sure the server is running.';
+        } else if (err.response) {
+          // Server responded with error
+          errorMessage = err.response.data?.detail || 'Server error occurred';
+        } else if (err.request) {
+          // Request made but no response
+          errorMessage = 'No response from server. Please check if the server is running.';
+        } else {
+          errorMessage = err.message || 'Failed to upload PDB file';
+        }
+        
+        setError(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage));
+        setPdbContent(null);
+        setProteinData(null);
       }
-
-      setProteinData(response.data);
-      setUploadedFile(file);
     } catch (err) {
-      console.error('Upload error:', err);
-      let errorMessage;
-      
-      if (err.code === 'ECONNABORTED') {
-        errorMessage = 'Connection timeout. Please try again.';
-      } else if (err.message === 'Network Error') {
-        errorMessage = 'Network error. Please check your connection and make sure the server is running.';
-      } else if (err.response) {
-        // Server responded with error
-        errorMessage = err.response.data?.detail || 'Server error occurred';
-      } else if (err.request) {
-        // Request made but no response
-        errorMessage = 'No response from server. Please check if the server is running.';
-      } else {
-        errorMessage = err.message || 'Failed to upload PDB file';
-      }
-      
-      setError(typeof errorMessage === 'string' ? errorMessage : JSON.stringify(errorMessage));
+      console.error('Error reading file:', err);
+      setError(err.message || 'Failed to read PDB file');
       setPdbContent(null);
       setProteinData(null);
     } finally {

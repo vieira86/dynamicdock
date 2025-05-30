@@ -11,12 +11,13 @@ from typing import Optional
 from pydantic import BaseModel
 from .molecular import MolecularHandler
 from .docking import DockingHandler
+from . import config
 
 router = APIRouter()
 molecular_handler = MolecularHandler()
 
-# Use absolute path for Vina installation
-vina_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "vina", "vina"))
+# Use path from config
+vina_path = config.VINA_PATH
 if not os.path.exists(vina_path):
     raise RuntimeError(f"AutoDock Vina not found at {vina_path}")
 
@@ -41,11 +42,9 @@ class DockingRequest(BaseModel):
 async def setup_vina(request: VinaSetupRequest):
     """Set up Vina in the selected directory."""
     try:
-        # Create the output directory if it doesn't exist
-        os.makedirs(request.output_dir, exist_ok=True)
-        
+        output_dir = os.path.join(config.RESULTS_DIR, request.output_dir)
+        os.makedirs(output_dir, exist_ok=True)
         return {"success": True, "message": "Vina setup completed successfully"}
-        
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to set up Vina: {str(e)}")
 
@@ -73,12 +72,20 @@ async def fetch_pdb(pdb_id: str):
 async def upload_pdb(file: UploadFile = File(...)):
     """Process an uploaded PDB file."""
     try:
-        temp_path = os.path.join(tempfile.gettempdir(), file.filename)
+        # Use the uploads directory
+        temp_path = os.path.join(config.UPLOADS_DIR, file.filename)
         with open(temp_path, "wb") as buffer:
             content = await file.read()
             buffer.write(content)
         
         analysis = molecular_handler.analyze_structure(temp_path)
+        
+        # Update the clean structure path to be relative
+        if analysis["clean_structure_path"]:
+            analysis["clean_structure_path"] = os.path.join(
+                config.UPLOADS_DIR,
+                os.path.basename(analysis["clean_structure_path"])
+            )
         
         # Get the main ligand information
         main_ligand = next((l for l in analysis["ligands"] if "is_main_ligand" in l), None)
@@ -102,22 +109,21 @@ async def dock_ligand(request: DockingRequest):
     try:
         print("Received docking request:", request.dict())  # Debug print
         
-        # Use the clean structure for docking
-        if not request.receptor_path.endswith('_clean.pdb'):
-            request.receptor_path = request.receptor_path.replace('.pdb', '_clean.pdb')
-            
-        if not os.path.exists(request.receptor_path):
+        # Use the results directory for output
+        output_dir = os.path.join(config.RESULTS_DIR, request.output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Update receptor path to use the uploads directory
+        receptor_path = os.path.join(config.UPLOADS_DIR, os.path.basename(request.receptor_path))
+        if not os.path.exists(receptor_path):
             raise HTTPException(
                 status_code=400,
                 detail="Clean protein structure not found. Please reload the protein."
             )
         
-        # Create output directory if it doesn't exist
-        os.makedirs(request.output_dir, exist_ok=True)
-        
         # Prepare receptor and ligand
         protein_pdbqt, ligand_pdbqt = molecular_handler.prepare_for_docking(
-            request.receptor_path, request.ligand_smiles
+            receptor_path, request.ligand_smiles
         )
         
         print(f"Prepared PDBQT files: Protein: {protein_pdbqt}, Ligand: {ligand_pdbqt}")  # Debug print
@@ -128,9 +134,9 @@ async def dock_ligand(request: DockingRequest):
             request.size_x, request.size_y, request.size_z
         )
         
-        # Set output paths
-        docking_result_pdbqt = os.path.join(request.output_dir, "docking_result.pdbqt")
-        complex_pdb = os.path.join(request.output_dir, "docked_complex.pdb")
+        # Set output paths in results directory
+        docking_result_pdbqt = os.path.join(output_dir, "docking_result.pdbqt")
+        complex_pdb = os.path.join(output_dir, "docked_complex.pdb")
         
         # Run docking
         result = docking_handler.run_docking(
@@ -146,32 +152,19 @@ async def dock_ligand(request: DockingRequest):
                 detail=f"Docking failed: {result['error']}"
             )
         
-        # Get the best binding affinity (lowest energy)
+        # Get the best binding affinity
         best_score = min(result["scores"], key=lambda x: x["affinity"]) if result["scores"] else None
         binding_affinity = best_score["affinity"] if best_score else None
-        
-        print(f"Best binding affinity: {binding_affinity} kcal/mol")  # Debug print
-        
-        # Save the docked complex as PDB
-        complex_path = docking_handler.save_docked_complex(
-            request.receptor_path,  # Original receptor PDB
-            docking_result_pdbqt,  # Docked ligand PDBQT
-            complex_pdb  # Output path
-        )
-        
-        print(f"Saved docked complex to: {complex_path}")  # Debug print
         
         return {
             "success": True,
             "binding_affinity": binding_affinity,
-            "poses_path": docking_result_pdbqt,  # PDBQT with all poses
-            "complex_path": complex_path,  # PDB with best pose
-            "all_scores": result["scores"]
+            "poses_path": docking_result_pdbqt,
+            "complex_path": complex_pdb
         }
         
     except Exception as e:
-        print("Docking error:", str(e))  # Debug print
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/download/{file_path:path}")
 async def download_file(file_path: str):

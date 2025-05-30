@@ -4,8 +4,8 @@ Handles AutoDock Vina docking operations and result processing.
 """
 
 import os
-import subprocess
 import tempfile
+import subprocess
 from typing import Dict, List, Optional
 import json
 from pathlib import Path
@@ -13,6 +13,7 @@ from pathlib import Path
 class DockingHandler:
     def __init__(self, vina_executable: str = "vina"):
         self.vina_executable = vina_executable
+        self.temp_dir = tempfile.mkdtemp(prefix='docking_')
 
     def prepare_docking_config(
         self,
@@ -28,6 +29,8 @@ class DockingHandler:
         """
         Prepare AutoDock Vina configuration file.
         """
+        config_path = os.path.join(self.temp_dir, "config.txt")
+        
         config = {
             "center_x": center_x,
             "center_y": center_y,
@@ -39,7 +42,6 @@ class DockingHandler:
             "num_modes": num_modes
         }
         
-        config_path = tempfile.mktemp(suffix='.conf')
         with open(config_path, 'w') as f:
             for key, value in config.items():
                 f.write(f"{key} = {value}\n")
@@ -57,7 +59,7 @@ class DockingHandler:
         Run molecular docking using AutoDock Vina.
         """
         if output_path is None:
-            output_path = tempfile.mktemp(suffix='_out.pdbqt')
+            output_path = os.path.join(self.temp_dir, "output.pdbqt")
 
         try:
             cmd = [
@@ -68,64 +70,67 @@ class DockingHandler:
                 "--out", output_path
             ]
             
-            process = subprocess.run(
+            print("Running command:", " ".join(cmd))  # Debug print
+            
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
-                text=True,
-                check=True
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
             )
+            
+            stdout, stderr = process.communicate()
+            
+            if process.returncode != 0:
+                return {
+                    "success": False,
+                    "error": f"Vina error: {stderr}"
+                }
+            
+            # Parse scores from stdout
+            scores = []
+            reading_scores = False
+            
+            for line in stdout.split('\n'):
+                # Start reading scores after this marker
+                if "-----+------------+----------+----------" in line:
+                    reading_scores = True
+                    continue
+                
+                # Stop reading when we hit an empty line after scores
+                if reading_scores and not line.strip():
+                    break
+                
+                # Parse score lines
+                if reading_scores and line.strip():
+                    try:
+                        parts = line.split()
+                        if len(parts) >= 4:  # mode, affinity, rmsd l.b., rmsd u.b.
+                            scores.append({
+                                "mode": int(parts[0]),
+                                "affinity": float(parts[1]),
+                                "rmsd_lb": float(parts[2]),
+                                "rmsd_ub": float(parts[3])
+                            })
+                    except (IndexError, ValueError) as e:
+                        print(f"Error parsing line: {line}, Error: {str(e)}")
+                        continue
+            
+            print(f"Parsed {len(scores)} binding modes")  # Debug print
+            for score in scores:
+                print(f"Mode {score['mode']}: {score['affinity']} kcal/mol")  # Debug print
             
             return {
                 "success": True,
-                "output_path": output_path,
-                "log": process.stdout,
-                "scores": self._parse_vina_output(process.stdout)
+                "scores": scores,
+                "output_path": output_path
             }
-        
-        except subprocess.CalledProcessError as e:
+            
+        except Exception as e:
             return {
                 "success": False,
-                "error": str(e),
-                "output": e.output
+                "error": str(e)
             }
-
-    def _parse_vina_output(self, output: str) -> List[Dict]:
-        """
-        Parse AutoDock Vina output to extract binding scores.
-        """
-        scores = []
-        reading_scores = False
-        
-        for line in output.split('\n'):
-            # Start reading scores after this marker
-            if "-----+------------+----------+----------" in line:
-                reading_scores = True
-                continue
-            
-            # Stop reading when we hit an empty line after scores
-            if reading_scores and not line.strip():
-                break
-            
-            # Parse score lines
-            if reading_scores and line.strip():
-                try:
-                    parts = line.split()
-                    if len(parts) >= 4:  # mode, affinity, rmsd l.b., rmsd u.b.
-                        scores.append({
-                            "mode": int(parts[0]),
-                            "affinity": float(parts[1]),
-                            "rmsd_lb": float(parts[2]),
-                            "rmsd_ub": float(parts[3])
-                        })
-                except (ValueError, IndexError) as e:
-                    print(f"Error parsing line: {line}, Error: {str(e)}")
-                    continue
-        
-        print(f"Parsed {len(scores)} binding modes")  # Debug print
-        for score in scores:
-            print(f"Mode {score['mode']}: {score['affinity']} kcal/mol")  # Debug print
-            
-        return scores
 
     def save_docked_complex(self, receptor_path: str, docked_ligand_path: str, output_path: str = None) -> str:
         """
@@ -133,7 +138,7 @@ class DockingHandler:
         """
         try:
             if output_path is None:
-                output_path = docked_ligand_path.replace('.pdbqt', '_complex.pdb')
+                output_path = os.path.join(self.temp_dir, "docked_complex.pdb")
                 
             # Convert receptor to PDB if it's PDBQT
             receptor_pdb = receptor_path

@@ -8,7 +8,7 @@ pydantic>=1.8.0
 biopython>=1.79
 rdkit>=2022.9.3
 numpy>=1.21.0
-openbabel>=3.1.0
+openbabel-wheel
 
 # Utilitários
 python-dotenv>=0.19.0

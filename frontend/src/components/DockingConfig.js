@@ -16,6 +16,7 @@ import {
   TableRow
 } from '@mui/material';
 import axios from 'axios';
+import config from '../config';
 
 const DockingConfig = ({ proteinPath, activesite }) => {
   const [ligandSmiles, setLigandSmiles] = useState('');
@@ -60,7 +61,7 @@ const DockingConfig = ({ proteinPath, activesite }) => {
 
       console.log('Sending docking request:', dockingData);
 
-      const response = await axios.post('http://localhost:8000/api/dock', dockingData);
+      const response = await axios.post(`${config.apiUrl}/api/dock`, dockingData);
 
       if (!response.data) {
         throw new Error('Empty response from server');
@@ -239,7 +240,7 @@ const DockingConfig = ({ proteinPath, activesite }) => {
                                 variant="outlined"
                                 size="small"
                                 onClick={() => {
-                                  const downloadUrl = `http://localhost:8000/api/download/${results.complex_path}`;
+                                  const downloadUrl = `${config.apiUrl}/api/download/${results.complex_path}`;
                                   window.open(downloadUrl, '_blank');
                                 }}
                               >
@@ -251,7 +252,7 @@ const DockingConfig = ({ proteinPath, activesite }) => {
                                 variant="outlined"
                                 size="small"
                                 onClick={() => {
-                                  const downloadUrl = `http://localhost:8000/api/download/${results.poses_path}`;
+                                  const downloadUrl = `${config.apiUrl}/api/download/${results.poses_path}`;
                                   window.open(downloadUrl, '_blank');
                                 }}
                               >

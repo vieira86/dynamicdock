@@ -11,6 +11,7 @@ import {
   CircularProgress
 } from '@mui/material';
 import axios from 'axios';
+import config from './config';
 import MolecularViewer from './components/MolecularViewer';
 import LigandInfo from './components/LigandInfo';
 import DockingConfig from './components/DockingConfig';
@@ -61,7 +62,7 @@ function App() {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await axios.post('http://localhost:8000/api/upload-pdb', formData, {
+      const response = await axios.post(`${config.apiUrl}/api/upload-pdb`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },

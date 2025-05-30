@@ -156,11 +156,24 @@ async def dock_ligand(request: DockingRequest):
         best_score = min(result["scores"], key=lambda x: x["affinity"]) if result["scores"] else None
         binding_affinity = best_score["affinity"] if best_score else None
         
+        # Generate the complex PDB file
+        complex_path = docking_handler.save_docked_complex(
+            receptor_path,  # Original PDB file
+            docking_result_pdbqt,  # Docked ligand
+            complex_pdb  # Output path
+        )
+        
+        if not os.path.exists(complex_pdb):
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to generate complex PDB file"
+            )
+        
         return {
             "success": True,
             "binding_affinity": binding_affinity,
-            "poses_path": docking_result_pdbqt,
-            "complex_path": complex_pdb
+            "poses_path": os.path.relpath(docking_result_pdbqt, config.BASE_DIR),
+            "complex_path": os.path.relpath(complex_pdb, config.BASE_DIR)
         }
         
     except Exception as e:
@@ -170,13 +183,25 @@ async def dock_ligand(request: DockingRequest):
 async def download_file(file_path: str):
     """Download a file."""
     try:
-        # For security, ensure the file exists and is within the allowed directories
-        abs_path = os.path.abspath(file_path)
+        # Convert relative path to absolute path within our directories
+        if file_path.startswith(config.UPLOADS_DIR) or file_path.startswith(config.RESULTS_DIR):
+            abs_path = file_path
+        else:
+            abs_path = os.path.join(config.BASE_DIR, file_path)
+        
+        abs_path = os.path.abspath(abs_path)
+        
+        # Security check: ensure file is within allowed directories
+        if not (abs_path.startswith(config.UPLOADS_DIR) or 
+                abs_path.startswith(config.RESULTS_DIR) or
+                abs_path.startswith(config.BASE_DIR)):
+            raise HTTPException(status_code=403, detail="Access denied")
+            
         if not os.path.exists(abs_path):
             raise HTTPException(status_code=404, detail="File not found")
             
         # Get the file name from the path
-        file_name = os.path.basename(file_path)
+        file_name = os.path.basename(abs_path)
         
         # Return the file as a download
         return FileResponse(
@@ -185,8 +210,10 @@ async def download_file(file_path: str):
             media_type="application/octet-stream"
         )
         
+    except HTTPException as e:
+        raise e
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/prepare-md")
 async def prepare_for_md(docked_complex_path: str):

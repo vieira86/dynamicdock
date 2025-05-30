@@ -132,51 +132,50 @@ class DockingHandler:
                 "error": str(e)
             }
 
-    def save_docked_complex(self, receptor_path: str, docked_ligand_path: str, output_path: str = None) -> str:
+    def save_docked_complex(self, receptor_path, docked_ligand_path, output_path):
         """
-        Convert docked ligand from PDBQT to PDB and combine with receptor.
+        Generate a PDB file containing both the receptor and the best docked pose.
         """
         try:
-            if output_path is None:
-                output_path = os.path.join(self.temp_dir, "docked_complex.pdb")
+            # Read the receptor PDB file
+            with open(receptor_path, 'r') as f:
+                receptor_lines = f.readlines()
+
+            # Read the docked ligand PDBQT file (we'll only use the first/best pose)
+            with open(docked_ligand_path, 'r') as f:
+                ligand_lines = []
+                reading_model = False
+                for line in f:
+                    if line.startswith('MODEL 1'):
+                        reading_model = True
+                        continue
+                    elif line.startswith('MODEL ') or line.startswith('ENDMDL'):
+                        reading_model = False
+                        continue
+                    elif reading_model and line.startswith('ATOM'):
+                        # Convert PDBQT atom lines to PDB format
+                        # Remove charge columns and keep only essential PDB fields
+                        pdb_line = line[:66] + '  1.00  0.00           ' + line[77:78] + '\n'
+                        ligand_lines.append(pdb_line)
+
+            # Write the combined PDB file
+            with open(output_path, 'w') as f:
+                # Write receptor atoms
+                for line in receptor_lines:
+                    if not line.startswith('END'):
+                        f.write(line)
                 
-            # Convert receptor to PDB if it's PDBQT
-            receptor_pdb = receptor_path
-            if receptor_path.endswith('.pdbqt'):
-                receptor_pdb = receptor_path.replace('.pdbqt', '.pdb')
-                cmd = ['obabel', receptor_path, '-O', receptor_pdb]
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
-            
-            # Convert docked ligand to PDB
-            ligand_pdb = docked_ligand_path.replace('.pdbqt', '_ligand.pdb')
-            cmd = ['obabel', docked_ligand_path, '-O', ligand_pdb]
-            subprocess.run(cmd, check=True, capture_output=True, text=True)
-            
-            # Combine receptor and ligand into a single PDB file
-            with open(output_path, 'w') as outfile:
-                # Write receptor
-                with open(receptor_pdb, 'r') as f:
-                    for line in f:
-                        if not line.startswith('END'):  # Skip END card from receptor
-                            outfile.write(line)
-                
-                # Write ligand
-                with open(ligand_pdb, 'r') as f:
-                    outfile.write('\n')  # Add a blank line between structures
-                    for line in f:
-                        outfile.write(line)
-            
-            # Clean up temporary files
-            if receptor_path.endswith('.pdbqt') and os.path.exists(receptor_pdb):
-                os.remove(receptor_pdb)
-            if os.path.exists(ligand_pdb):
-                os.remove(ligand_pdb)
-                
+                # Write ligand atoms
+                f.write('TER\n')  # Terminate receptor chain
+                for line in ligand_lines:
+                    f.write(line)
+                f.write('END\n')
+
             return output_path
-            
+
         except Exception as e:
-            print(f"Error saving docked complex: {str(e)}")
-            raise RuntimeError(f"Failed to save docked complex: {str(e)}")
+            print(f"Error generating complex PDB: {str(e)}")
+            return None
 
     def prepare_for_md(self, docked_complex_path: str) -> Dict:
         """

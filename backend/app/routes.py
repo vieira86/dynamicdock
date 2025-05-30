@@ -163,18 +163,23 @@ async def dock_ligand(request: DockingRequest):
             complex_pdb  # Output path
         )
         
+        print(f"Generated complex PDB at: {complex_pdb}")  # Debug log
+        
         if not os.path.exists(complex_pdb):
             raise HTTPException(
                 status_code=500,
                 detail="Failed to generate complex PDB file"
             )
         
-        return {
+        response_data = {
             "success": True,
             "binding_affinity": binding_affinity,
-            "poses_path": os.path.relpath(docking_result_pdbqt, config.BASE_DIR),
-            "complex_path": os.path.relpath(complex_pdb, config.BASE_DIR)
+            "poses_path": docking_result_pdbqt,
+            "complex_path": complex_pdb
         }
+        
+        print(f"Sending response with paths: {response_data}")  # Debug log
+        return response_data
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -183,6 +188,8 @@ async def dock_ligand(request: DockingRequest):
 async def download_file(file_path: str):
     """Download a file."""
     try:
+        print(f"Download request for file: {file_path}")  # Debug log
+        
         # Convert relative path to absolute path within our directories
         if file_path.startswith(config.UPLOADS_DIR) or file_path.startswith(config.RESULTS_DIR):
             abs_path = file_path
@@ -190,6 +197,9 @@ async def download_file(file_path: str):
             abs_path = os.path.join(config.BASE_DIR, file_path)
         
         abs_path = os.path.abspath(abs_path)
+        
+        print(f"Absolute path: {abs_path}")  # Debug log
+        print(f"Allowed directories: {config.UPLOADS_DIR}, {config.RESULTS_DIR}")  # Debug log
         
         # Security check: ensure file is within allowed directories
         if not (abs_path.startswith(config.UPLOADS_DIR) or 

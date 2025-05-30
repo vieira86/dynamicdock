@@ -21,7 +21,7 @@ import config from '../config';
 const DockingConfig = ({ proteinPath, activesite }) => {
   const [ligandSmiles, setLigandSmiles] = useState('');
   const [boxSize, setBoxSize] = useState({ x: 20, y: 20, z: 20 });
-  const [outputDir] = useState('/Users/rafaelvieira/Desktop/Dynamic_Dock/vina');
+  const [outputDir] = useState('docking_results');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [results, setResults] = useState(null);
@@ -93,7 +93,7 @@ const DockingConfig = ({ proteinPath, activesite }) => {
       <Grid container spacing={2}>
         <Grid item xs={12}>
           <Typography variant="body2" color="textSecondary" gutterBottom>
-            Using AutoDock Vina from: {outputDir}
+            Results will be saved in: {outputDir}
           </Typography>
         </Grid>
 

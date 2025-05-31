@@ -78,6 +78,8 @@ dynamic_dock/
 The application will be available at:  
 👉 **http://localhost:3000**
 
+The application will be available ONLINE at:  
+👉 **http://dockingdynamic.netlify.app**
 ---
 
 ## 🚢 Deployment
@@ -146,6 +148,7 @@ The application will be available at:
 > ```env
 > REACT_APP_BACKEND_URL=https://dynamic-dock-backend.onrender.com
 > ```
+
 
 ---
 
